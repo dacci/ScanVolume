@@ -4,10 +4,131 @@
 
 #include <winioctl.h>
 
+#include <array>
 #include <list>
 #include <map>
 
 namespace {
+
+class FileId : public std::array<BYTE, 16> {
+ public:
+  FileId() {
+    fill(static_cast<value_type>(-1));
+  }
+
+  explicit FileId(const FILE_ID_128& id) {
+    operator=(id);
+  }
+
+  explicit FileId(const DWORDLONG& id) {
+    operator=(id);
+  }
+
+  FileId& operator=(const FILE_ID_128& id) {
+    memcpy(data(), id.Identifier, size());
+    return *this;
+  }
+
+  FileId& operator=(const DWORDLONG& id) {
+    fill(0);
+    memcpy(data(), &id, sizeof(id));
+    return *this;
+  }
+
+  bool operator==(const FileId& other) const {
+    return memcmp(data(), other.data(), size()) == 0;
+  }
+
+  bool operator<(const FileId& other) const {
+    auto a = rbegin(), b = other.rbegin();
+
+    for (size_t i = 0; i < size(); ++i) {
+      if (*a != *b)
+        return *a < *b;
+
+      ++a;
+      ++b;
+    }
+
+    return false;
+  }
+};
+
+class SizeCalculator {
+ public:
+  SizeCalculator() {}
+
+  void Calculate(FileEntry* root) {
+    void* old_value = nullptr;
+    Wow64DisableWow64FsRedirection(&old_value);
+
+    CalculateImpl(root);
+
+    Wow64RevertWow64FsRedirection(old_value);
+  }
+
+ private:
+  static bool GetFileSize(const std::wstring& path, LARGE_INTEGER* size) {
+    bool succeeded = false;
+
+    HANDLE handle = CreateFileW(
+        path.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (handle != INVALID_HANDLE_VALUE) {
+      if (GetFileSizeEx(handle, size))
+        succeeded = true;
+
+      CloseHandle(handle);
+      handle = INVALID_HANDLE_VALUE;
+    }
+
+    if (!succeeded) {
+      WIN32_FIND_DATAW find_data;
+      handle = FindFirstFileW(path.c_str(), &find_data);
+      if (handle != INVALID_HANDLE_VALUE) {
+        size->LowPart = find_data.nFileSizeLow;
+        size->HighPart = find_data.nFileSizeHigh;
+        succeeded = true;
+
+        FindClose(handle);
+        handle = INVALID_HANDLE_VALUE;
+      }
+    }
+
+    return succeeded;
+  }
+
+  void CalculateImpl(FileEntry* root) {
+    tree_path_.push_back(root);
+
+    for (auto& child : root->children) {
+      if (child->attributes & FILE_ATTRIBUTE_DIRECTORY) {
+        CalculateImpl(child.get());
+      } else {
+        child->size.QuadPart = -1;
+
+        std::wstring path(L"\\\\?\\");
+        for (auto& node : tree_path_)
+          path.append(node->name).push_back(L'\\');
+        path.append(child->name);
+
+        if (GetFileSize(path, &child->size)) {
+          for (auto& node : tree_path_)
+            node->size.QuadPart += child->size.QuadPart;
+        }
+      }
+    }
+
+    tree_path_.pop_back();
+  }
+
+  std::list<FileEntry*> tree_path_;
+
+  SizeCalculator(const SizeCalculator&) = delete;
+  SizeCalculator& operator=(const SizeCalculator&) = delete;
+};
 
 template <typename Record>
 void ProcessRecord(const Record& record,
@@ -34,83 +155,15 @@ void ProcessRecord(const Record& record,
   parent->children.push_back(std::unique_ptr<FileEntry>(entry));
 }
 
-class SizeCalculator {
- public:
-  SizeCalculator() {}
-
-  void Calculate(FileEntry* root) {
-    void* old_value = nullptr;
-    Wow64DisableWow64FsRedirection(&old_value);
-
-    CalculateImpl(root);
-
-    Wow64RevertWow64FsRedirection(old_value);
-  }
-
- private:
-  void CalculateImpl(FileEntry* root) {
-    tree_path_.push_back(root);
-
-    for (auto& child : root->children) {
-      if (child->attributes & FILE_ATTRIBUTE_DIRECTORY) {
-        CalculateImpl(child.get());
-      } else {
-        child->size.QuadPart = -1;
-
-        std::wstring path;
-        for (auto& node : tree_path_)
-          path.append(node->name).push_back(L'\\');
-        path.append(child->name);
-
-        HANDLE file = CreateFile(
-            path.c_str(), FILE_READ_ATTRIBUTES,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-            OPEN_EXISTING,
-            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
-        if (file == INVALID_HANDLE_VALUE)
-          continue;
-
-        if (GetFileSizeEx(file, &child->size)) {
-          for (auto& node : tree_path_)
-            node->size.QuadPart += child->size.QuadPart;
-        }
-
-        CloseHandle(file);
-      }
-    }
-
-    tree_path_.pop_back();
-  }
-
-  std::list<FileEntry*> tree_path_;
-
-  SizeCalculator(const SizeCalculator&) = delete;
-  SizeCalculator& operator=(const SizeCalculator&) = delete;
-};
-
 }  // namespace
-
-bool FileId::operator<(const FileId& other) const {
-  auto a = rbegin(), b = other.rbegin();
-
-  for (size_t i = 0; i < size(); ++i) {
-    if (*a != *b)
-      return *a < *b;
-
-    ++a;
-    ++b;
-  }
-
-  return false;
-}
 
 VolumeScanner::VolumeScanner() {}
 
 HRESULT VolumeScanner::Scan(const wchar_t* volume) {
   auto path = std::wstring(L"\\\\.\\").append(volume);
-  HANDLE handle =
-      CreateFile(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                 nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (handle == INVALID_HANDLE_VALUE)
     return HRESULT_FROM_WIN32(GetLastError());
 

@@ -5,42 +5,9 @@
 
 #include <windows.h>
 
-#include <array>
 #include <memory>
 #include <string>
 #include <vector>
-
-class FileId : public std::array<BYTE, 16> {
- public:
-  FileId() {
-    fill(static_cast<value_type>(-1));
-  }
-
-  explicit FileId(const FILE_ID_128& id) {
-    operator=(id);
-  }
-
-  explicit FileId(const DWORDLONG& id) {
-    operator=(id);
-  }
-
-  FileId& operator=(const FILE_ID_128& id) {
-    memcpy(data(), id.Identifier, size());
-    return *this;
-  }
-
-  FileId& operator=(const DWORDLONG& id) {
-    fill(0);
-    memcpy(data(), &id, sizeof(id));
-    return *this;
-  }
-
-  bool operator==(const FileId& other) const {
-    return memcmp(data(), other.data(), size()) == 0;
-  }
-
-  bool operator<(const FileId& other) const;
-};
 
 struct FileEntry {
   FileEntry() : parent(nullptr), attributes(), size() {}

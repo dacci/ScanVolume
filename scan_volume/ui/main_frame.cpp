@@ -41,9 +41,9 @@ HTREEITEM MainFrame::InsertItem(HTREEITEM parent, FileEntry* entry) {
   new_item.mask =
       TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
   new_item.pszText = LPSTR_TEXTCALLBACK;
-  new_item.iImage = I_IMAGECALLBACK;
-  new_item.iSelectedImage = I_IMAGECALLBACK;
-  new_item.cChildren = I_CHILDRENCALLBACK;
+  new_item.iImage = (entry->attributes & FILE_ATTRIBUTE_DIRECTORY) ? 0 : 1;
+  new_item.iSelectedImage = new_item.iImage;
+  new_item.cChildren = entry->children.empty() ? 0 : 1;
   new_item.lParam = reinterpret_cast<LPARAM>(new ItemData{entry, false});
 
   return tree_.InsertItem(&insert);
@@ -114,16 +114,6 @@ LRESULT MainFrame::OnGetDispInfo(NMHDR* header) {
       wcscat_s(item.pszText, item.cchTextMax, L"B)");
     }
   }
-
-  if (item.mask & TVIF_IMAGE)
-    item.iImage = (data->entry->attributes & FILE_ATTRIBUTE_DIRECTORY) ? 0 : 1;
-
-  if (item.mask & TVIF_SELECTEDIMAGE)
-    item.iSelectedImage =
-        (data->entry->attributes & FILE_ATTRIBUTE_DIRECTORY) ? 0 : 1;
-
-  if (item.mask & TVIF_CHILDREN)
-    item.cChildren = data->entry->children.empty() ? 0 : 1;
 
   item.mask |= TVIF_DI_SETITEM;
 
