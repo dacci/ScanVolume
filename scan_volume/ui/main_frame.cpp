@@ -130,11 +130,17 @@ LRESULT MainFrame::OnItemExpanding(NMHDR* header) {
 
   data->opened = true;
 
+  tree_.SetRedraw(FALSE);
+
   for (auto& child : data->entry->children)
     InsertItem(tree_view->itemNew.hItem, child.get());
 
   TVSORTCB sort_cb{item.hItem, BySizeDescending};
   tree_.SortChildrenCB(&sort_cb, FALSE);
+
+  tree_.SetRedraw();
+  tree_.RedrawWindow(nullptr, nullptr,
+                     RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
 
   return 0;
 }
@@ -161,8 +167,14 @@ void MainFrame::OnFileOpen(UINT /*notify_code*/, int /*id*/,
     return;
   }
 
+  tree_.SetRedraw(FALSE);
+
   tree_.DeleteAllItems();
   InsertItem(TVI_ROOT, scanner_.GetRoot());
+
+  tree_.SetRedraw();
+  tree_.RedrawWindow(nullptr, nullptr,
+                     RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
 void MainFrame::OnAppExit(UINT /*notify_code*/, int /*id*/,
