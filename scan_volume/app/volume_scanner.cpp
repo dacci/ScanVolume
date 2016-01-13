@@ -7,6 +7,7 @@
 #include <array>
 #include <list>
 #include <map>
+#include <vector>
 
 namespace {
 

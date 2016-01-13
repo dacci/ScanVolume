@@ -2,7 +2,6 @@
 
 #include "ui/progress_dialog.h"
 
-#include "app/scan_volume.h"
 #include "app/volume_scanner.h"
 
 ProgressDialog::ProgressDialog(VolumeScanner* scanner) : scanner_(scanner) {}
@@ -11,6 +10,8 @@ BOOL ProgressDialog::OnInitDialog(CWindow /*focus*/, LPARAM /*init_param*/) {
   CenterWindow();
 
   DoDataExchange(DDX_LOAD);
+
+  progress_.SetMarquee(TRUE);
 
   HRESULT result = scanner_->Scan(m_hWnd);
   if (FAILED(result))
