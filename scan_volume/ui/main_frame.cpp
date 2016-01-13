@@ -5,33 +5,12 @@
 #include <atlstr.h>
 
 #include "ui/drive_dialog.h"
+#include "ui/progress_dialog.h"
 
-namespace {
-
-struct ItemData {
+struct MainFrame::ItemData {
   FileEntry* entry;
   bool opened;
 };
-
-int CALLBACK BySizeDescending(LPARAM left, LPARAM right, LPARAM /*param*/) {
-  auto a = reinterpret_cast<ItemData*>(left);
-  auto b = reinterpret_cast<ItemData*>(right);
-
-  auto a_dir = a->entry->attributes & FILE_ATTRIBUTE_DIRECTORY;
-  auto b_dir = b->entry->attributes & FILE_ATTRIBUTE_DIRECTORY;
-  if (a_dir != b_dir)
-    return b_dir - a_dir;
-
-  if (a->entry->size.QuadPart < b->entry->size.QuadPart)
-    return 1;
-
-  if (a->entry->size.QuadPart > b->entry->size.QuadPart)
-    return -1;
-
-  return a->entry->name.compare(b->entry->name);
-}
-
-}  // namespace
 
 MainFrame::MainFrame() {}
 
@@ -47,6 +26,26 @@ HTREEITEM MainFrame::InsertItem(HTREEITEM parent, FileEntry* entry) {
   new_item.lParam = reinterpret_cast<LPARAM>(new ItemData{entry, false});
 
   return tree_.InsertItem(&insert);
+}
+
+int CALLBACK MainFrame::SortChildren(LPARAM left, LPARAM right, LPARAM param) {
+#pragma warning(suppress : 4189)
+  auto self = reinterpret_cast<MainFrame*>(param);
+  auto a = reinterpret_cast<ItemData*>(left);
+  auto b = reinterpret_cast<ItemData*>(right);
+
+  auto a_dir = a->entry->attributes & FILE_ATTRIBUTE_DIRECTORY;
+  auto b_dir = b->entry->attributes & FILE_ATTRIBUTE_DIRECTORY;
+  if (a_dir != b_dir)
+    return b_dir - a_dir;
+
+  if (a->entry->size.QuadPart < b->entry->size.QuadPart)
+    return 1;
+
+  if (a->entry->size.QuadPart > b->entry->size.QuadPart)
+    return -1;
+
+  return a->entry->name.compare(b->entry->name);
 }
 
 int MainFrame::OnCreate(CREATESTRUCT* /*create_struct*/) {
@@ -135,7 +134,7 @@ LRESULT MainFrame::OnItemExpanding(NMHDR* header) {
   for (auto& child : data->entry->children)
     InsertItem(tree_view->itemNew.hItem, child.get());
 
-  TVSORTCB sort_cb{item.hItem, BySizeDescending};
+  TVSORTCB sort_cb{item.hItem, SortChildren};
   tree_.SortChildrenCB(&sort_cb, FALSE);
 
   tree_.SetRedraw();
@@ -155,17 +154,15 @@ LRESULT MainFrame::OnDeleteItem(NMHDR* header) {
 
 void MainFrame::OnFileOpen(UINT /*notify_code*/, int /*id*/,
                            CWindow /*control*/) {
-  DriveDialog dialog;
-  if (dialog.DoModal() != IDOK)
+  DriveDialog drive_dialog;
+  if (drive_dialog.DoModal() != IDOK)
     return;
 
-  HRESULT result = scanner_.Scan(dialog.selected_drive());
-  if (FAILED(result)) {
-    CString message;
-    message.Format(L"Scan failed with 0x%08x", result);
-    MessageBox(message, nullptr, MB_ICONERROR);
+  scanner_.SetTarget(drive_dialog.selected_drive());
+
+  ProgressDialog progress_dialog(&scanner_);
+  if (progress_dialog.DoModal(m_hWnd) != IDOK)
     return;
-  }
 
   tree_.SetRedraw(FALSE);
 

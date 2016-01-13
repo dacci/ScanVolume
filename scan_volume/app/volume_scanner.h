@@ -24,9 +24,26 @@ struct FileEntry {
 
 class VolumeScanner {
  public:
+  enum Messages {
+    EnumBegin,
+    EnumEnd,
+    SizeBegin,
+    SizeEnd,
+    ScanEnd,
+  };
+
   VolumeScanner();
 
-  HRESULT Scan(const wchar_t* volume);
+  HRESULT Scan(HWND hWnd);
+  void Cancel();
+
+  const std::wstring& GetTarget() const {
+    return target_;
+  }
+
+  void SetTarget(const wchar_t* target) {
+    target_ = target;
+  }
 
   FileEntry* GetRoot() const {
     if (roots_.empty())
@@ -36,8 +53,21 @@ class VolumeScanner {
   }
 
  private:
+  struct Context;
+
   static const size_t kBufferSize = 64 * 1024;
 
+  static DWORD CALLBACK Run(void* param);
+  HRESULT Enumerate(Context* context);
+  HRESULT Size(Context* context);
+  HRESULT Size(Context* context, FileEntry* entry);
+
+  SRWLOCK lock_;
+  CONDITION_VARIABLE done_;
+  bool cancel_;
+  HANDLE thread_;
+
+  std::wstring target_;
   std::vector<std::unique_ptr<FileEntry>> roots_;
 
   VolumeScanner(const VolumeScanner&) = delete;

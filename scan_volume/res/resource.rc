@@ -47,6 +47,61 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x0L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041104b0"
+        BEGIN
+            VALUE "CompanyName", "dacci.org"
+            VALUE "FileDescription", "scan_volume application"
+            VALUE "FileVersion", "0.1.0.0"
+            VALUE "InternalName", "scan_volume.exe"
+            VALUE "LegalCopyright", "Copyright (c) 2016 dacci.org"
+            VALUE "OriginalFilename", "scan_volume.exe"
+            VALUE "ProductName", "scan_volume"
+            VALUE "ProductVersion", "0.1.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x411, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_MAIN MENU
+BEGIN
+    POPUP "File"
+    BEGIN
+        MENUITEM "Select Drive",                ID_FILE_OPEN
+        MENUITEM SEPARATOR
+        MENUITEM "Exit",                        ID_APP_EXIT
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // Dialog
 //
 
@@ -57,6 +112,16 @@ FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     COMBOBOX        IDC_DRIVE_COMBO,7,8,133,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     DEFPUSHBUTTON   "OK",IDOK,91,28,49,14
+END
+
+IDD_PROGRESS DIALOGEX 0, 0, 161, 63
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Dialog"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "メッセージ",IDC_MESSAGE,7,7,147,8
+    CONTROL         "",IDC_PROGRESS,"msctls_progress32",WS_BORDER,7,21,147,14
+    PUSHBUTTON      "キャンセル",IDCANCEL,56,42,49,14
 END
 
 
@@ -75,6 +140,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 42
     END
+
+    IDD_PROGRESS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 154
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 56
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -89,20 +162,9 @@ BEGIN
     0
 END
 
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Menu
-//
-
-IDR_MAIN MENU
+IDD_PROGRESS AFX_DIALOG_LAYOUT
 BEGIN
-    POPUP "File"
-    BEGIN
-        MENUITEM "Select Drive",                ID_FILE_OPEN
-        MENUITEM SEPARATOR
-        MENUITEM "Exit",                        ID_APP_EXIT
-    END
+    0
 END
 
 #endif    // 日本語 (日本) resources

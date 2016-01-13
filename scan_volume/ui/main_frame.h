@@ -20,6 +20,8 @@ class MainFrame : public CFrameWindowImpl<MainFrame> {
   DECLARE_FRAME_WND_CLASS(nullptr, IDR_MAIN)
 
  private:
+  struct ItemData;
+
   BEGIN_MSG_MAP(MainFrame)
     MSG_WM_CREATE(OnCreate)
 
@@ -34,6 +36,7 @@ class MainFrame : public CFrameWindowImpl<MainFrame> {
   END_MSG_MAP()
 
   HTREEITEM InsertItem(HTREEITEM parent, FileEntry* entry);
+  static int CALLBACK SortChildren(LPARAM left, LPARAM right, LPARAM param);
 
   int OnCreate(CREATESTRUCT* create_struct);
 

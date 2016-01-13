@@ -99,8 +99,11 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Manifest>
-      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.0</AssemblyIdentity>
+      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
+    <PostBuildEvent>
+      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -117,8 +120,11 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Manifest>
-      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.0</AssemblyIdentity>
+      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
+    <PostBuildEvent>
+      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -141,8 +147,11 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Manifest>
-      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.0</AssemblyIdentity>
+      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
+    <PostBuildEvent>
+      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -165,14 +174,18 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <Manifest>
-      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.0</AssemblyIdentity>
+      <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
+    <PostBuildEvent>
+      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="app\scan_volume.cpp" />
     <ClCompile Include="app\volume_scanner.cpp" />
     <ClCompile Include="ui\drive_dialog.cpp" />
     <ClCompile Include="ui\main_frame.cpp" />
+    <ClCompile Include="ui\progress_dialog.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app\scan_volume.h" />
@@ -180,6 +193,7 @@
     <ClInclude Include="res\resource.h" />
     <ClInclude Include="ui\drive_dialog.h" />
     <ClInclude Include="ui\main_frame.h" />
+    <ClInclude Include="ui\progress_dialog.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="res\resource.rc" />
