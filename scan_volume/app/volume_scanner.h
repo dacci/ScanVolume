@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <pshpack8.h>  // NOLINT(build/include_order)
+
 struct FileEntry {
   FileEntry() : parent(nullptr), attributes(), size() {}
 
@@ -21,6 +23,8 @@ struct FileEntry {
   FileEntry(const FileEntry&) = delete;
   FileEntry& operator=(const FileEntry&) = delete;
 };
+
+#include <poppack.h>  // NOLINT(build/include_order)
 
 class VolumeScanner {
  public:
@@ -59,8 +63,7 @@ class VolumeScanner {
 
   static DWORD CALLBACK Run(void* param);
   HRESULT Enumerate(Context* context);
-  HRESULT Size(Context* context);
-  HRESULT Size(Context* context, FileEntry* entry);
+  static DWORD CALLBACK SizeThread(void* param);
 
   SRWLOCK lock_;
   CONDITION_VARIABLE done_;

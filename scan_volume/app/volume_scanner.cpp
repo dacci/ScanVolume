@@ -4,6 +4,7 @@
 
 #include <winioctl.h>
 
+#include <algorithm>
 #include <array>
 #include <list>
 #include <map>
@@ -115,10 +116,18 @@ void ProcessRecord(const Record& record,
 }  // namespace
 
 struct VolumeScanner::Context {
-  VolumeScanner* instance;
-  HWND hWnd;
+  Context(VolumeScanner* instance, HWND hWnd) : instance(instance), hWnd(hWnd) {
+    InitializeSRWLock(&queue_lock);
+    InitializeConditionVariable(&queue_available);
+  }
+
+  VolumeScanner* const instance;
+  const HWND hWnd;
+  std::map<FileId, FileEntry*> entries;
   std::vector<std::unique_ptr<FileEntry>> roots;
-  std::list<FileEntry*> tree_path;
+  std::list<FileEntry*> queue;
+  SRWLOCK queue_lock;
+  CONDITION_VARIABLE queue_available;
 };
 
 VolumeScanner::VolumeScanner() : cancel_(false), thread_(NULL) {
@@ -132,11 +141,8 @@ HRESULT VolumeScanner::Scan(HWND hWnd) {
   AcquireSRWLockExclusive(&lock_);
 
   if (thread_ == NULL) {
-    auto context = std::make_unique<Context>();
+    auto context = std::make_unique<Context>(this, hWnd);
     if (context != nullptr) {
-      context->instance = this;
-      context->hWnd = hWnd;
-
       cancel_ = false;
 
       thread_ = CreateThread(nullptr, 0, Run, context.get(), 0, nullptr);
@@ -177,9 +183,68 @@ DWORD CALLBACK VolumeScanner::Run(void* param) {
   result = context->instance->Enumerate(context);
   PostMessage(context->hWnd, WM_USER, EnumEnd, result);
 
-  if (SUCCEEDED(result)) {
+  if (SUCCEEDED(result) && result != S_FALSE) {
+    for (auto& pair : context->entries) {
+      if (pair.second->parent != nullptr)
+        continue;
+
+      std::unique_ptr<FileEntry> root(pair.second);
+      root->attributes = FILE_ATTRIBUTE_DIRECTORY;
+      root->name = context->instance->target_.c_str();
+      context->roots.push_back(std::move(root));
+    }
+
     PostMessage(context->hWnd, WM_USER, SizeBegin, 0);
-    result = context->instance->Size(context);
+
+    SYSTEM_INFO system_info;
+    GetSystemInfo(&system_info);
+
+    DWORD concurrency =
+        std::min<DWORD>(MAXIMUM_WAIT_OBJECTS, system_info.dwNumberOfProcessors);
+    concurrency = concurrency * 3 / 2;
+
+    std::vector<HANDLE> threads;
+    for (DWORD i = 0; i < concurrency; ++i) {
+      HANDLE thread = CreateThread(nullptr, 0, SizeThread, context, 0, nullptr);
+      if (thread == NULL)
+        break;
+
+      threads.push_back(thread);
+    }
+
+    if (threads.empty()) {
+      result = HRESULT_FROM_WIN32(GetLastError());
+    } else {
+      for (auto& pair : context->entries) {
+        AcquireSRWLockShared(&context->instance->lock_);
+        bool cancel = context->instance->cancel_;
+        ReleaseSRWLockShared(&context->instance->lock_);
+        if (cancel) {
+          result = E_ABORT;
+          break;
+        }
+
+        AcquireSRWLockExclusive(&context->queue_lock);
+
+        if (!(pair.second->attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+          context->queue.push_front(pair.second);
+          WakeAllConditionVariable(&context->queue_available);
+        }
+
+        ReleaseSRWLockExclusive(&context->queue_lock);
+      }
+
+      AcquireSRWLockExclusive(&context->queue_lock);
+      context->queue.push_front(nullptr);
+      WakeAllConditionVariable(&context->queue_available);
+      ReleaseSRWLockExclusive(&context->queue_lock);
+
+      WaitForMultipleObjects(static_cast<DWORD>(threads.size()), &threads[0],
+                             TRUE, INFINITE);
+      std::for_each(threads.begin(), threads.end(), CloseHandle);
+      threads.clear();
+    }
+
     PostMessage(context->hWnd, WM_USER, SizeEnd, result);
   }
 
@@ -188,6 +253,13 @@ DWORD CALLBACK VolumeScanner::Run(void* param) {
     context->instance->roots_.clear();
     context->instance->roots_ = std::move(context->roots);
     ReleaseSRWLockExclusive(&context->instance->lock_);
+  } else {
+    for (auto& pair : context->entries) {
+      for (auto& child : pair.second->children)
+        child.release();
+
+      delete pair.second;
+    }
   }
 
   PostMessage(context->hWnd, WM_USER, ScanEnd, result);
@@ -213,9 +285,7 @@ HRESULT VolumeScanner::Enumerate(Context* context) {
   if (handle == INVALID_HANDLE_VALUE)
     return HRESULT_FROM_WIN32(GetLastError());
 
-  std::map<FileId, FileEntry*> entries;
-
-  // Step 1: Scan files.
+  auto& entries = context->entries;
 
   MFT_ENUM_DATA_V1 enum_query{0, 0, MAXLONGLONG, 2, 3};
   char buffer[kBufferSize];
@@ -268,84 +338,63 @@ HRESULT VolumeScanner::Enumerate(Context* context) {
   CloseHandle(handle);
   handle = INVALID_HANDLE_VALUE;
 
-  if (HRESULT_CODE(error) != ERROR_HANDLE_EOF) {
-    for (auto& pair : entries) {
-      for (auto& child : pair.second->children)
-        child.release();
-
-      delete pair.second;
-    }
-
+  if (HRESULT_CODE(error) != ERROR_HANDLE_EOF)
     return error;
-  }
 
-  if (entries.empty())
-    return S_FALSE;
-
-  // Step 2: Find root entry.
-
-  for (auto& pair : entries) {
-    if (pair.second->parent != nullptr)
-      continue;
-
-    std::unique_ptr<FileEntry> root(pair.second);
-    root->attributes = FILE_ATTRIBUTE_DIRECTORY;
-    root->name = target_.c_str();
-    context->roots.push_back(std::move(root));
-  }
-
-  return S_OK;
+  return entries.empty() ? S_FALSE : S_OK;
 }
 
-HRESULT VolumeScanner::Size(Context* context) {
-  void* old_value = nullptr;
-  Wow64DisableWow64FsRedirection(&old_value);
+DWORD CALLBACK VolumeScanner::SizeThread(void* param) {
+  auto context = static_cast<Context*>(param);
 
-  HRESULT result = S_OK;
-  for (auto& root : context->roots) {
-    result = Size(context, root.get());
-    if (FAILED(result))
-      break;
-  }
+  BOOL wow64 = FALSE;
+  void* redirection = nullptr;
+  if (IsWow64Process(GetCurrentProcess(), &wow64) && wow64)
+    Wow64DisableWow64FsRedirection(&redirection);
 
-  Wow64RevertWow64FsRedirection(old_value);
-
-  return result;
-}
-
-HRESULT VolumeScanner::Size(Context* context, FileEntry* entry) {
-  HRESULT result = S_OK;
-
-  context->tree_path.push_back(entry);
-
-  for (auto& child : entry->children) {
-    AcquireSRWLockShared(&lock_);
-    if (cancel_)
-      result = E_ABORT;
-    ReleaseSRWLockShared(&lock_);
-    if (FAILED(result))
+  for (bool cancel = false; !cancel;) {
+    AcquireSRWLockShared(&context->instance->lock_);
+    cancel = context->instance->cancel_;
+    ReleaseSRWLockShared(&context->instance->lock_);
+    if (cancel)
       break;
 
-    if (child->attributes & FILE_ATTRIBUTE_DIRECTORY) {
-      result = Size(context, child.get());
-      if (FAILED(result))
-        break;
-    } else {
-      child->size.QuadPart = -1;
+    AcquireSRWLockExclusive(&context->queue_lock);
 
-      std::wstring path(L"\\\\?\\");
-      for (auto& node : context->tree_path)
-        path.append(node->name).push_back(L'\\');
-      path.append(child->name);
+    while (context->queue.empty())
+      SleepConditionVariableSRW(&context->queue_available, &context->queue_lock,
+                                INFINITE, 0);
 
-      if (GetFileSize(path, &child->size)) {
-        for (auto& node : context->tree_path)
-          node->size.QuadPart += child->size.QuadPart;
+    auto entry = context->queue.back();
+    if (entry != nullptr)
+      context->queue.pop_back();
+    ReleaseSRWLockExclusive(&context->queue_lock);
+    if (entry == nullptr)
+      break;
+
+    std::list<FileEntry*> tree_path;
+    for (auto cursor = entry; cursor != nullptr; cursor = cursor->parent)
+      tree_path.push_front(cursor);
+
+    std::wstring path(L"\\\\?");
+    path.reserve(MAX_PATH);
+    for (auto cursor : tree_path) {
+      path.push_back(L'\\');
+      path.append(cursor->name);
+    }
+
+    if (GetFileSize(path, &entry->size)) {
+      for (auto cursor : tree_path) {
+        if (cursor != entry)
+          InterlockedAdd64(&cursor->size.QuadPart, entry->size.QuadPart);
       }
+    } else {
+      entry->size.QuadPart = -1;
     }
   }
 
-  context->tree_path.pop_back();
+  if (wow64)
+    Wow64RevertWow64FsRedirection(&redirection);
 
-  return result;
+  return 0;
 }
