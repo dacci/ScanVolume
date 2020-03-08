@@ -101,9 +101,6 @@
     <Manifest>
       <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
-    <PostBuildEvent>
-      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -122,9 +119,6 @@
     <Manifest>
       <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
-    <PostBuildEvent>
-      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -149,9 +143,6 @@
     <Manifest>
       <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
-    <PostBuildEvent>
-      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -176,9 +167,6 @@
     <Manifest>
       <AssemblyIdentity>Dacci.Incubation.ScanVolume, version=0.1</AssemblyIdentity>
     </Manifest>
-    <PostBuildEvent>
-      <Command>signtool sign /n dacci.org /fd SHA256 "$(TargetPath)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="app\scan_volume.cpp" />
