@@ -1,0 +1,15 @@
+version: 2.1
+
+orbs:
+  win: circleci/windows@2.2.0
+
+jobs:
+  build:
+    executor: win/default
+
+    steps:
+      - checkout
+      - run: git submodule update --init
+      - run: msbuild /p:Configuration=Release /p:Platform=x64
+      - store_artifacts:
+          path: x64/Release/ScanVolume.exe
